@@ -1,0 +1,75 @@
+Documentation Client.rs
+
+# 1. Detailed Changes in Code:
+
+#### A. **New `max_retries` and `retries` Fields**:
+In the new version, the `Client` struct was extended with two new fields:
+- **`retries`**: Tracks the current number of retry attempts.
+- **`max_retries`**: Specifies the maximum number of retry attempts for sending and receiving messages.
+
+##### **Why this change?**
+This addition is to ensure that in case of failures (like network issues), the client will try again a specified number of times before aborting, making the connection process more resilient.
+
+#### B. **New `send_and_receive` Method**:
+A new method `send_and_receive` was added to the `Client` struct, combining both sending a message and receiving a response in a single method. This method incorporates retry logic to attempt to send and receive a message, retrying until `max_retries` is reached.
+
+##### **Why this change?**
+Previously, there were no automatic retries on failed communications. The new `send_and_receive` method ensures better robustness in handling intermittent network failures, which is a common issue in network communication. By combining both sending and receiving into one method, it simplifies the client's usage in scenarios where both actions need to be handled sequentially.
+
+#### C. **Enhanced Logging**:
+- Added the `warn` and `info` log levels throughout the code, especially in the retry mechanism and the connection setup.
+- The `error` log level was also more frequently used to record issues like failed connection attempts and data decoding problems.
+
+##### **Why this change?**
+This change makes the system more traceable and helps the developers monitor the status of connections and operations. By having granular logging for connection attempts, failures, and retries, it’s easier to debug and understand the client’s operation flow.
+
+#### D. **Timeouts for Read/Write Operations**:
+The new version of the code introduces timeouts for both reading and writing operations via the methods `stream.set_read_timeout` and `stream.set_write_timeout`.
+
+##### **Why this change?**
+The old version had a timeout for the connection, but no explicit timeouts for read and write operations. Adding these ensures that the client doesn’t block indefinitely during communication, improving responsiveness in case of issues.
+
+#### E. **`EchoMessage` Type for Communication**:
+- The old code used the generic `client_message::Message` for sending messages.
+- The new version uses the more specific `EchoMessage` for structured communication.
+
+##### **Why this change?**
+This was done to provide clearer, more specific types of messages for communication between the client and server, making the code easier to maintain and understand. The change also aligns with good practices in ensuring that messages have a well-defined structure in networking protocols.
+
+---
+
+# 2. Bug Analysis and Fix Report:
+
+#### Identified Bugs in the Initial Implementation:
+
+1. **Lack of Retry Logic for Failed Connections**:
+   The old version didn’t account for automatic retries when network failures or timeouts occurred. This could result in the client giving up prematurely after the first failed attempt.
+
+   - **Fix**: Introduced a `retries` counter and a `max_retries` limit, allowing the client to retry failed connection attempts or message sends up to a specified limit.
+
+2. **No Timeout for Read/Write Operations**:
+   In the old version, the client did not have dedicated timeouts for reading or writing data over the established connection, which could result in indefinite blocking if the server failed to respond.
+
+   - **Fix**: Implemented read and write timeouts using `set_read_timeout` and `set_write_timeout` methods, ensuring that the client doesn't block indefinitely when receiving or sending data.
+
+3. **Unclear Error Handling**:
+   The error messages in the old version could be vague in cases where the client failed to read or send data.
+
+   - **Fix**: Refined error handling by introducing more specific error messages and logging for failure scenarios. Each failure now produces detailed logs at the appropriate logging level, such as `warn` for retries and `error` for fatal issues.
+
+#### How Architectural Flaws Were Addressed:
+
+1. **Retry Mechanism**:
+   The previous implementation didn’t provide retry attempts for failing operations like sending a message or establishing a connection. This flaw would cause failures to terminate operations without providing a chance to recover.
+
+   - **Fix**: By introducing the `send_and_receive` method that incorporates retry logic, the architecture now provides resilience to temporary network failures and other issues.
+
+2. **Connection Management**:
+   The old code only dealt with the connection’s lifecycle with basic connect and disconnect functionality. This didn’t adequately handle the situation where intermittent network failures could disrupt ongoing operations.
+
+   - **Fix**: The new version improves connection robustness by including timeouts and retry mechanisms and by ensuring better error logging and handling, providing clearer insights into the client-server interaction flow.
+
+3. **Message Encoding and Decoding**:
+   In the old version, the `send` method encoded generic `client_message::Message` types, which were not specific enough for easy comprehension of what messages were exchanged.
+
+   - **Fix**: By specifying an `EchoMessage` as the structure, the code now makes it easier to follow the client-server communication flow with explicit message structures. This is especially useful when expanding the protocol to support more message types in the future.

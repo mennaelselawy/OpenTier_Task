@@ -1,0 +1,77 @@
+Bug Analysis and Fix Report for `server.rs`
+
+Overview:
+This documentation reports on the bugs and architectural flaws identified in the **old version** of `server.rs` and how they were addressed in the **new version**.
+
+# 1. **Bug Report:**
+## Identified Bugs in the Old Version:
+*Bug 1: Client Thread Handling & Server Scalability**  
+- **Problem**: The old version handled each client within the `run` method. This could block the server if a large number of clients connected at once, leading to resource exhaustion and no means of managing active connections beyond those that were handled by the main loop.
+- **Impact**: The server was unable to manage multiple concurrent connections efficiently, and performance could degrade significantly under heavy load.
+
+*Bug 2: Lack of Retry Limit on Message Handling**  
+- **Problem**: If a client sent malformed data that failed to decode, there was no retry mechanism to handle errors or provide appropriate feedback before potentially disconnecting the client.
+- **Impact**: Clients might be prematurely disconnected after a single error or they wouldn't receive any meaningful error messages after consecutive message-decoding failures.
+
+*Bug 3: Client Disconnect Handling**  
+- **Problem**: Once a client disconnected, there was no method to release resources or inform the server properly about the number of active client connections. This could result in misleading server status or inability to properly track the active client count.
+
+
+# 2. **Architectural Changes and Fixes:**
+## Fix for Bug 1: Client Thread Handling & Server Scalability  
+**Old Version:**
+- Each client was handled directly in the `run` method of the server, blocking while waiting for incoming data. If no connection was available, the server still looped through its main thread.
+- The old version used non-blocking but did not efficiently handle simultaneous client threads, which could exhaust resources without managing the active client count.
+
+**New Version Fix:**
+- Introduced a **thread pool-like model** by tracking active threads for each client in `client_threads` (`Arc<Mutex<Vec<thread::JoinHandle<()>>>>`). This way, every client’s handler is spawned on its own thread. 
+- Added a **max clients constraint** (`max_clients`) to prevent too many clients from overloading the server, and a more sophisticated **client count tracking** (`AtomicUsize`).
+- This change allows the server to manage connections more efficiently, scaling for heavier traffic by managing a limited number of concurrent client threads.
+
+```CODE
+let client_threads = Arc::new(Mutex::new(Vec::new())); // Track client threads
+let client_count = Arc::new(AtomicUsize::new(0)); // Track the number of active clients
+```
+
+## Fix for Bug 2: Lack of Retry Limit on Message Handling  
+**Old Version:**
+- When decoding messages failed, the client handler did not have a way to retry a specific number of times or handle client miscommunication more robustly. Errors were immediately logged, and the client was disconnected with little chance to recover from transient issues.
+
+**New Version Fix:**
+- Added retry functionality to the **Client struct**. Clients now get up to 3 attempts (`retries` field) before being disconnected after too many decoding errors.
+- Improved error handling by logging each retry attempt to offer detailed feedback to developers on why failures occur.
+  
+```CODE
+self.retries += 1; // Track retry attempts
+if self.retries > 3 {
+    warn!("Too many decoding errors; disconnecting client.");
+    return Err(io::Error::new(io::ErrorKind::InvalidData, "Maximum retries reached"));
+}
+```
+
+## Fix for Bug 3: Client Disconnect Handling  
+**Old Version:**
+- The old version lacked any coherent way of tracking the exact number of connected clients after a client disconnects.
+
+**New Version Fix:**
+- Introduced a **shared client count** mechanism (`client_count`), which tracks the total number of active clients in an `AtomicUsize`.
+- The server also tracks each client's thread and cleans up after each connection closes with the `cleanup_threads` method.
+- This ensures proper resource handling and prevents issues related to over-allocating client threads or memory.
+
+```CODE
+self.client_count.fetch_add(1, Ordering::SeqCst); // Increment client count when a new client is accepted
+self.client_count.fetch_sub(1, Ordering::SeqCst); // Decrement client count when a client disconnects
+```
+
+# 3. **Detailed Changes:**
+- **Client Struct:**
+  - The stream is now **wrapped in an `Arc<Mutex<TcpStream>>`**, ensuring it is thread-safe for handling by multiple threads.
+  - A `retries` counter was introduced to handle cases where the server encounters repeated message decoding errors.
+
+- **Server Struct:**
+  - The constructor for `Server` (`new()`) now accepts a `max_clients` parameter to limit the number of clients that can connect at once.
+  - The **server thread** logic has been restructured: **client threads are tracked**, and additional logic has been introduced to refuse connections once the maximum number of clients is reached.
+  - A `cleanup_threads` method was added to ensure all client-handling threads are properly cleaned up when the server shuts down.
+
+- **Error Handling:**
+  - Improved error handling for message decoding failures (attempt retries up to three times) and client disconnections.

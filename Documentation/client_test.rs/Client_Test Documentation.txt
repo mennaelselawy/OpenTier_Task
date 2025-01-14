@@ -1,0 +1,84 @@
+Client_Test.rs Documentation
+
+1. **New Test Functions:**
+
+  a. `test_client_connection()`**
+   - **Description**: Verifies the client's ability to connect to and disconnect from the server.
+   - **Modifications**: No functional bugs noted here.
+   - **Fixes/Updates**: Added the assertion to ensure the connection and disconnection operations succeed.
+   - **Status**: Likely works as expected; no known issues.
+
+  b. `test_client_echo_message()`**
+   - **Description**: Tests sending and receiving of a basic EchoMessage.
+   - **Updates**: Ensures that the EchoMessage sent to the server is received correctly.
+   - **Fixes/Updates**: Improved message wrapping and validation of received message.
+   - **Potential Issue**: Watch out for unexpected `unwrap()` behavior and possible message type mismatches.
+
+  c. `test_multiple_echo_messages()`**
+   - **Description**: Ensures multiple messages can be sent and echoed successfully.
+   - **Fixes/Updates**: It seems to be handling a list of messages, now validates correctly by comparing each echoed message's content.
+
+  d. `test_multiple_clients()`**
+   - **Description**: Verifies concurrent client behavior (Multiple clients sending and receiving messages).
+   - **Fixes/Updates**: Proper usage of threading and sync to ensure correct assertions and simultaneous operations.
+   - **Bug Potential**: Need to make sure concurrent server and thread handling doesn't introduce race conditions.
+
+  e. `test_client_add_request()`**
+   - **Description**: Validates AddRequest/Response interactions from the client to server.
+   - **Fixes**: The operation appears functional as the server correctly processes add requests and returns the correct result.
+   - **Status**: Looks solid; potential improvements in error handling on the server could be made.
+
+  f. `test_invalid_message_handling()`**
+   - **Description**: Checks how the system reacts to invalid messages.
+   - **Fixes/Updates**: Server logic to reject invalid message type added; assert error for handling an unrecognized type.
+   - **Bug Potential**: Ensure that `Unknown` message handling and errors are appropriately filtered within the actual server implementation.
+
+  g. `test_stress_large_number_of_clients()`**
+   - **Description**: Tests how the server handles a high number of connections.
+   - **Fixes/Updates**: Checks that server allows a specific number of clients to connect and rejects overflow attempts.
+   - **Fix/Status**: Keep track of resource constraints that may limit large connection loads on the server side.
+
+  h. `test_timeout_handling()`**
+   - **Description**: Tests the handling of timeouts.
+   - **Fixes/Updates**: Tests to make sure that when the client timeout threshold exceeds, it triggers the error as expected.
+   - **Bug Potential**: Make sure timing during tests is consistent; use a more advanced timeout mechanism instead of hard sleep periods.
+
+  i. `test_graceful_shutdown_with_active_clients()`**
+   - **Description**: Server shutdown behavior when active clients are connected.
+   - **Fixes/Updates**: The server stops gracefully, client disconnects, but validation needs to ensure consistent behavior during actual shutdown events.
+   - **Bug Potential**: Managing simultaneous client disconnections during server shutdown could cause issues.
+
+  j. `test_delayed_messages()`**
+   - **Description**: Verifies message handling when delayed.
+   - **Fixes/Updates**: Validates the server-client communication after introducing sleep (simulating real-world delays).
+   - **Bug Potential**: Ensure that both delays do not introduce timing problems between client-server exchanges.
+
+  k. `test_connection_refusal()`**
+   - **Description**: Tests server's rejection behavior when exceeding max connections.
+   - **Fixes/Updates**: Checks that the server correctly rejects new clients once max connection limit is reached.
+   - **Potential Fix**: Ensure server handles refusal smoothly and informs clients with clear error responses.
+
+  l. `test_large_echo_message()`**
+   - **Description**: Tests the system's handling of large payloads in echo messages.
+   - **Fixes/Updates**: Ensures that large strings are handled correctly without performance issues.
+   - **Fix Potential**: Large payload size may require optimization in the server's processing of such data to prevent performance bottlenecks or memory issues.
+  
+---
+
+2. **Bug Fixes/Improvements:**
+
+  a. **Error Handling in Client-Server Communication**:
+   - Assert-based error messages need careful monitoring to avoid panics.
+   - Ensure the server can handle a variety of invalid message types without crashing, such as `Unknown`.
+
+  b. **Concurrency Handling:**
+   - **`test_multiple_clients()`** and **`test_concurrent_add_requests()`** use multithreading. Ensure the `Server::run()` function is safe under concurrent loads.
+
+  c. **Server Response Handling**:
+   - Be cautious with how responses are received and unwrapped, ensuring that errors are gracefully handled for unexpected responses.
+
+  d. **Stress Tests and Limits**:
+   - The stress test might not yet properly stress concurrency if client or server side limitations on thread handling (e.g., max connections) aren't factored in. Server-side resource management and connection handling (especially during **`test_stress_large_number_of_clients()`**) may need adjustments based on memory/thread overhead.
+
+  e. **Message Timeout Handling**:
+   - Some tests simulate timeouts (`test_timeout_handling`) based on artificial delays (using `thread::sleep`). It's better to add native timeout logic with timeout errors instead of arbitrary sleeps.
